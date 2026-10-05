@@ -2,7 +2,7 @@
    1. Keeps the app itself on the phone, so it opens with no signal.
    2. On Android (Background Sync), finishes queued uploads after the app is closed.
       iPhone has no Background Sync: there, the page uploads whenever it is open. */
-const SHELL = 'ld-shell-v2';
+const SHELL = 'ld-shell-v3';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('ld-shell-') && k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
@@ -30,7 +30,9 @@ async function api(body) {
   if (!r.ok) throw new Error('http ' + r.status);
   return r.json();
 }
-async function drain() {
+/* One uploader at a time: the open page takes the same lock, so a photo is never sent by both at once. */
+function drain() { return (self.navigator && navigator.locks && navigator.locks.request) ? navigator.locks.request('ld-upload', drainOnce) : drainOnce(); }
+async function drainOnce() {
   CFG = CFG || await kv('cfg');
   if (!CFG) return;
   const items = (await req('items', 'readonly', s => s.getAll())) || [];

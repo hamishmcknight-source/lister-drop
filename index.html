@@ -3109,12 +3109,18 @@ dialog.ssheet:not([open]) { translate: var(--off) 0; opacity: var(--hs-sheet-o);
     });
   }
 
+  // One uploader at a time. The page and the service worker (Android background sync) both work
+  // through the queue; without this they can send the same photo at the same moment.
+  function uploadLock(fn) {
+    return (navigator.locks && navigator.locks.request) ? navigator.locks.request('ld-upload', fn) : fn();
+  }
+
   function flush(now) {
     clearTimeout(S.timer);
     if (S.flushing) return;
     if (!CFG.api) { setReach('offline'); return; }
     S.flushing = true;
-    allItems().then(function (items) {
+    uploadLock(function () { return allItems().then(function (items) {
       countQueued(items);
       var todo = items.filter(function (i) { return !i.committed && !i.stuck; }).sort(function (a, b) { return a.capturedAt < b.capturedAt ? -1 : 1; });
       if (!todo.length) { S.flushing = false; S.backoff = 0; return; }
@@ -3131,7 +3137,7 @@ dialog.ssheet:not([open]) { translate: var(--off) 0; opacity: var(--hs-sheet-o);
             });
         });
       }, Promise.resolve()).then(function () { S.backoff = 0; setReach('online'); });
-    }).catch(function (e) {
+    }); }).catch(function (e) {
       if (e && e.net) { if (navigator.onLine) probe(); S.backoff = Math.min((S.backoff || 2.5) * 2, 300); }
     }).then(function () {
       S.flushing = false;
